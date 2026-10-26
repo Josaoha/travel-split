@@ -173,6 +173,10 @@ body{margin:0}
     <button class="btn ghost" id="resetBtn" type="button">새 여행 시작</button>
   </header>
 
+  <div class="notice" id="viewNotice" hidden>
+    <span id="viewMsg"></span>
+    <span class="row"><button class="btn" id="viewClose" type="button">내 정산으로 돌아가기</button><button class="btn primary" id="viewKeep" type="button">내 기기에 저장</button></span>
+  </div>
   <div class="notice" id="sampleNotice" hidden>
     <span>지금 보이는 인원, 자차, 지출은 <b>예시 데이터</b>예요. 직접 입력하면 이 브라우저에 저장됩니다.</span>
     <button class="btn" id="clearSample" type="button">예시 지우고 시작</button>
@@ -244,7 +248,7 @@ body{margin:0}
       </section>
 
       <section class="panel" aria-labelledby="h-settle">
-        <div class="panel-head"><h2 id="h-settle">이렇게 보내세요</h2><button class="btn" id="gotoShare" type="button">카톡방에 공유</button></div>
+        <div class="panel-head"><h2 id="h-settle">이렇게 보내세요</h2><button class="btn primary" id="sendTop" type="button">카톡으로 보내기</button></div>
         <div class="verdict" id="verdict"></div>
         <ol class="tickets" id="tickets"></ol>
         <details class="how">
@@ -259,7 +263,7 @@ body{margin:0}
 
   <section class="panel share" id="share" aria-labelledby="h-share">
     <div class="panel-head"><h2 id="h-share">카톡방에 공유</h2><span class="muted num" id="shareLen"></span></div>
-    <p class="hint">아래 내용을 복사해 단톡방에 붙여 넣으세요. 넣을 항목을 고를 수 있어요.</p>
+    <p class="hint"><b>카톡으로 보내기</b>를 누르면 카카오톡이 열려요. 단톡방을 고르면 아래 내용과 함께 <b>내역 보기 링크</b>가 전송되고, 친구들은 링크를 눌러 이 앱에서 지출·자차·송금 내역을 그대로 볼 수 있어요. 메시지에 넣을 항목은 아래에서 고르세요.</p>
     <div class="chips" role="group" aria-label="공유할 항목">
       <button type="button" class="toggle" id="sh-exp" data-sec="exp" aria-pressed="true">지출 내역</button>
       <button type="button" class="toggle" id="sh-car" data-sec="car" aria-pressed="true">자차 계산</button>
@@ -268,8 +272,8 @@ body{margin:0}
     </div>
     <pre class="preview" id="sharePreview" tabindex="0" aria-label="공유할 내용 미리보기"></pre>
     <div class="row" style="align-items:center">
-      <button class="btn primary" id="copyBtn" type="button">복사하기</button>
-      <button class="btn" id="nativeShare" type="button" hidden>다른 앱으로 공유</button>
+      <button class="btn primary" id="sendBtn" type="button">카톡으로 보내기</button>
+      <button class="btn" id="copyBtn" type="button">복사하기</button>
       <span class="toast" id="toast" role="status"></span>
     </div>
     <textarea id="copyFallback" class="num" rows="8" style="width:100%;font-size:13px" hidden readonly aria-label="복사할 텍스트"></textarea>
@@ -421,9 +425,10 @@ if (!Array.isArray(state.cars)) state.cars = [];
 // 이전 버전(감가상각·세차비·기타 따로 입력)에서 저장된 차는 차종 기본 차량경비로 바꾼다.
 state.cars.forEach(c => { if (c.veh == null){ c.veh = (CAR_PRESETS[c.preset] || CAR_PRESETS.mid).veh || CAR_PRESETS.mid.veh; delete c.dep; delete c.wash; delete c.other; } });
 let editingId = null;
+let viewing = false, ownState = null;
 let draftParts = null;
 
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(state, (k, v) => k === '_armed' ? undefined : v)); } catch(e) {} }
+function save(){ if (viewing) return; try { localStorage.setItem(KEY, JSON.stringify(state, (k, v) => k === '_armed' ? undefined : v)); } catch(e) {} }
 function touch(){ state.sample = false; save(); render(); }
 const nameOf = id => (state.members.find(m => m.id === id) || {name:'?'}).name;
 const carLabel = c => `${nameOf(c.owner)}님 차`;
@@ -624,6 +629,8 @@ function buildReport({total, n, bal, transfers, exact}){
 function renderShare(data){
   const text = buildReport(data);
   renderShare.text = text;
+  renderShare.data = data;
+  updateLink();
   $('sharePreview').textContent = text;
   $('shareLen').textContent = plain(text.length) + '자';
   document.querySelectorAll('[data-sec]').forEach(b => b.setAttribute('aria-pressed', shareSecs[b.dataset.sec]));
@@ -776,7 +783,7 @@ $('ledger').addEventListener('click', e => {
   }
 });
 
-function wipe(){ state = {sample:false, trip:'', members:[], cars:[], expenses:[]}; resetForm(); save(); render(); $('trip').focus(); }
+function wipe(){ if (viewing) closeView(); state = {sample:false, trip:'', members:[], cars:[], expenses:[]}; resetForm(); save(); render(); $('trip').focus(); }
 $('clearSample').addEventListener('click', wipe);
 $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; });
 $('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; });
@@ -784,26 +791,147 @@ $('resetYes').addEventListener('click', () => { $('resetConfirm').hidden = true;
 
 /* 공유 */
 const say = (msg, bad) => { $('toast').textContent = msg; $('toast').classList.toggle('bad', !!bad); };
-$('gotoShare').addEventListener('click', () => { $('share').scrollIntoView({behavior:'smooth', block:'start'}); $('copyBtn').focus({preventScroll:true}); });
 document.querySelector('.share .chips').addEventListener('click', e => {
   const s = e.target.dataset.sec; if (!s) return;
   shareSecs[s] = !shareSecs[s]; renderResult(); say('');
 });
-$('copyBtn').addEventListener('click', () => {
-  const text = renderShare.text, ta = $('copyFallback');
-  const ok = () => { say('복사했어요. 카톡 단톡방 입력창에 붙여 넣으세요.'); ta.hidden = true; };
+
+/* ---------- 내역 링크: 정산 내용을 주소(#s=...)에 압축해 담는다. 서버 없이 링크만으로 열린다. ---------- */
+const b64u = {
+  enc: bytes => { let x = ''; for (let i = 0; i < bytes.length; i += 0x8000) x += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(x).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: str => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
+};
+const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+
+/** 사람은 순서 번호로, 금액은 그대로. 짧게 만들어 링크 길이를 줄인다. */
+function packState(st){
+  const idx = new Map(st.members.map((m, i) => [m.id, i]));
+  const ix = ids => ids.map(id => idx.get(id)).filter(i => i != null);
+  return {v:1, t:st.trip, m:st.members.map(m => m.name),
+    e:st.expenses.map(e => [e.desc, idx.get(e.payer), e.amount, ix(e.parts)]),
+    c:st.cars.map(c => [idx.get(c.owner), c.preset, c.fuel, c.eff, c.price, c.km, c.veh, c.toll, c.tollPayer ? idx.get(c.tollPayer) : -1, ix(c.riders), c.ownerShares ? 1 : 0])};
+}
+function unpackState(p){
+  if (!p || p.v !== 1 || !Array.isArray(p.m)) throw new Error('bad');
+  const members = p.m.map((name, i) => ({id:'m' + (i + 1), name:String(name).slice(0, 12)}));
+  const id = i => members[i] && members[i].id;
+  const ids = a => (Array.isArray(a) ? a : []).map(id).filter(Boolean);
+  const n = v => Math.max(0, Number(v) || 0);
+  const expenses = (p.e || []).map(([desc, payer, amount, parts]) => ({id:uid(), desc:String(desc || '').slice(0, 30), payer:id(payer), amount:Math.round(n(amount)), parts:ids(parts)}))
+    .filter(e => e.payer && e.parts.length);
+  const cars = (p.c || []).map(([o, preset, fuel, eff, price, km, veh, toll, tp, riders, os]) => ({id:uid(), owner:id(o),
+    preset:CAR_PRESETS[preset] ? preset : 'custom', fuel:FUELS[fuel] ? fuel : 'gasoline',
+    eff:n(eff), price:n(price), km:n(km), veh:n(veh), toll:n(toll), tollPayer:(tp >= 0 && id(tp)) || '', riders:ids(riders), ownerShares:!!os}))
+    .filter(c => c.owner);
+  return {sample:false, trip:String(p.t || '').slice(0, 40), members, cars, expenses};
+}
+async function makeLink(st){
+  const json = new TextEncoder().encode(JSON.stringify(packState(st)));
+  let code = '';
+  if (window.CompressionStream){ try { code = 'z' + b64u.enc(await pipe(json, new CompressionStream('deflate-raw'))); } catch(e){} }
+  if (!code) code = 'j' + b64u.enc(json);
+  return location.origin + location.pathname + '#s=' + code;
+}
+async function readLink(){
+  const m = location.hash.match(/^#s=([zj])([\w-]+)$/);
+  if (!m) return null;
+  let bytes = b64u.dec(m[2]);
+  if (m[1] === 'z') bytes = await pipe(bytes, new DecompressionStream('deflate-raw'));
+  return unpackState(JSON.parse(new TextDecoder().decode(bytes)));
+}
+// 버튼을 누른 순간 바로 카톡을 열어야 해서(브라우저 정책), 링크는 내용이 바뀔 때마다 미리 만들어 둔다.
+let currentLink = '', linkSeq = 0;
+function updateLink(){
+  const seq = ++linkSeq;
+  makeLink(state).then(u => { if (seq === linkSeq) currentLink = u; }, () => {});
+}
+
+/* 공유 받은 정산 보기 */
+function openView(shared){
+  if (!viewing) ownState = state;
+  viewing = true; state = shared; resetForm();
+  $('viewMsg').innerHTML = `공유받은 <b>${esc(shared.trip || '여행')}</b> 정산을 보고 있어요. 여기서 고친 내용은 저장되지 않아요.`;
+  $('viewKeep').hidden = false; $('viewKeep').textContent = '내 기기에 저장'; delete $('viewKeep').dataset.armed;
+  $('viewNotice').hidden = false;
+  render(); window.scrollTo(0, 0);
+}
+function closeView(){
+  viewing = false;
+  history.replaceState(null, '', location.pathname + location.search);
+  $('viewNotice').hidden = true;
+}
+$('viewClose').addEventListener('click', () => { if (viewing) state = ownState; closeView(); resetForm(); render(); });
+$('viewKeep').addEventListener('click', e => {
+  const mine = ownState && !ownState.sample && (ownState.expenses.length || ownState.cars.length);
+  if (mine && !e.target.dataset.armed){ e.target.dataset.armed = '1'; e.target.textContent = '내 정산을 덮어써요. 한 번 더 누르세요'; return; }
+  closeView(); save(); render(); say('');
+});
+function checkLink(){
+  if (!/^#s=/.test(location.hash)) return;
+  readLink().then(sh => { if (sh) openView(sh); else throw 0; }).catch(() => {
+    $('viewMsg').textContent = '공유 링크를 열 수 없어요. 링크가 잘렸거나 브라우저가 너무 오래됐어요. 크롬이나 사파리로 열어 보세요.';
+    $('viewKeep').hidden = true; $('viewNotice').hidden = false;
+  });
+}
+window.addEventListener('hashchange', checkLink);
+
+/* ---------- 카톡으로 보내기 ----------
+ * 1순위: 카카오 SDK — 카톡 공유 화면이 바로 열리고 "내역 보기" 버튼이 달린 메시지가 간다. 아래 키가 있어야 동작.
+ * 2순위: 휴대폰 공유 창 — 카카오톡을 고르면 같은 내용과 링크가 간다.
+ * 3순위: 복사 — PC 등 공유 창이 없는 곳. */
+const KAKAO_JS_KEY = ''; // developers.kakao.com 내 애플리케이션 > 앱 키 > JavaScript 키
+if (KAKAO_JS_KEY){
+  const sdk = document.createElement('script');
+  sdk.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
+  sdk.crossOrigin = 'anonymous';
+  sdk.onload = () => { try { if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY); } catch(e){} };
+  document.head.appendChild(sdk);
+}
+const kakaoOn = () => !!(window.Kakao && Kakao.isInitialized && Kakao.isInitialized() && Kakao.Share);
+const linkNow = () => currentLink || location.origin + location.pathname;
+const fullText = () => renderShare.text + '\n\n▶ 앱에서 내역 보기\n' + linkNow();
+
+/** 카카오 텍스트 메시지는 200자 제한이라 총액과 송금만 담는다. 자세한 건 링크에서. */
+function kakaoText(){
+  const d = renderShare.data, n = state.members.length;
+  const lines = [`[${state.trip || '여행'} 정산]`, `총 ${won(d.total)} · ${n}명`];
+  if (d.transfers.length){ lines.push(`송금 ${d.transfers.length}회`); d.transfers.forEach(x => lines.push(`${nameOf(x.from)} → ${nameOf(x.to)} ${won(x.amount)}`)); }
+  else lines.push('보낼 돈이 없어요.');
+  let t = lines.join('\n');
+  if (t.length > 200) t = t.slice(0, 190).replace(/\n[^\n]*$/, '') + '\n…(나머지는 내역에서)';
+  return t;
+}
+
+function copyText(text, okMsg){
+  const ta = $('copyFallback');
+  const ok = () => { say(okMsg); ta.hidden = true; };
   const fail = () => { ta.value = text; ta.hidden = false; ta.focus(); ta.select(); say('자동 복사가 막혀 있어요. 아래 칸에서 전체 선택 후 복사하세요.', true); };
   try { navigator.clipboard.writeText(text).then(ok, fail); } catch(e){ fail(); }
-});
-// 휴대폰에서는 공유 시트(카카오톡 포함)를 띄운다. 지원하지 않는 브라우저에서는 복사로 안내.
-if (navigator.share) $('nativeShare').hidden = false;
-$('nativeShare').addEventListener('click', () => {
-  navigator.share({title:`${state.trip || '여행'} 정산`, text:renderShare.text}).then(
-    () => say('공유했어요.'),
-    err => { if (err && err.name !== 'AbortError') say('이 화면에서는 공유 시트를 열 수 없어요. 복사하기를 눌러 주세요.', true); });
-});
+}
+
+function sendKakao(){
+  const url = linkNow();
+  if (kakaoOn()){
+    try {
+      Kakao.Share.sendDefault({objectType:'text', text:kakaoText(), link:{mobileWebUrl:url, webUrl:url}, buttonTitle:'정산 내역 보기'});
+      say('카카오톡에서 보낼 단톡방을 고르세요.');
+      return;
+    } catch(e){ /* 아래 공유 창으로 넘어감 */ }
+  }
+  if (navigator.share){
+    navigator.share({title:`${state.trip || '여행'} 정산`, text:fullText()}).then(
+      () => say('보냈어요.'),
+      err => { if (err && err.name !== 'AbortError') copyText(fullText(), '공유 창을 열 수 없어 복사했어요. 단톡방에 붙여 넣으세요.'); });
+    return;
+  }
+  copyText(fullText(), '이 기기에서는 카톡을 바로 열 수 없어 복사했어요. 단톡방에 붙여 넣으세요.');
+}
+$('sendBtn').addEventListener('click', sendKakao);
+$('sendTop').addEventListener('click', sendKakao);
+$('copyBtn').addEventListener('click', () => copyText(fullText(), '복사했어요. 카톡 단톡방 입력창에 붙여 넣으세요.'));
 
 render();
+checkLink();
 
 /* ---------- 웹앱(PWA) ---------- */
 if ('serviceWorker' in navigator && location.protocol !== 'file:'){
