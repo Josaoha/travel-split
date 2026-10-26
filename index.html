@@ -247,10 +247,6 @@ body{margin:0}
         <div class="panel-head"><h2 id="h-settle">이렇게 보내세요</h2><button class="btn primary" id="sendTop" type="button">카톡으로 보내기</button></div>
         <div class="verdict" id="verdict"></div>
         <ol class="tickets" id="tickets"></ol>
-        <div class="row" style="align-items:center;justify-content:space-between">
-          <span class="hint">카톡으로 보내기는 이 화면 그대로 정산표 사진을 보내요.</span>
-          <button class="btn" id="sendLink" type="button">링크 카드로 보내기</button>
-        </div>
         <span class="toast" id="toast" role="status"></span>
         <textarea id="copyFallback" rows="8" style="width:100%;font-size:13px" hidden readonly aria-label="복사할 텍스트"></textarea>
         <details class="how">
@@ -616,7 +612,6 @@ function renderShare(data){
   renderShare.text = text;
   renderShare.data = data;
   updateLink();
-  updateImage();
 }
 
 /* ---------- 입력 처리 ---------- */
@@ -888,8 +883,8 @@ function copyText(text, okMsg){
   try { navigator.clipboard.writeText(text).then(ok, fail); } catch(e){ fail(); }
 }
 
-/** 링크 카드: 총액과 송금만 담긴 카카오 카드 + "정산 내역 보기" 버튼 */
-function sendCard(){
+/** 카톡으로 보내기: 총액과 송금이 담긴 카카오 카드 + "정산 내역 보기" 버튼(입력한 내용이 담긴 앱 링크) */
+function sendKakao(){
   const url = linkNow();
   if (kakaoOn()){
     try {
@@ -907,169 +902,6 @@ function sendCard(){
   copyText(fullText(), '이 기기에서는 카톡을 바로 열 수 없어 복사했어요. 단톡방에 붙여 넣으세요.');
 }
 
-/* ---------- 정산표 사진: 앱 화면 양식 그대로 그려서 카톡에 사진으로 보낸다 ---------- */
-const IMG_W = 540;
-const IC = {bg:'#EDF1F0', surface:'#FFFFFF', sunk:'#F5F8F7', ink:'#15232B', muted:'#5A6A6F', line:'#D2DBDA', accent:'#0F6E6A', pop:'#C98A0B', pos:'#1F7A4D', neg:'#B3412E'};
-const IF = {d:'"Do Hyeon","IBM Plex Sans KR",sans-serif', b:'"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif', n:'"IBM Plex Mono","IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",monospace'};
-
-function roundRect(ctx, x, y, w, h, r){
-  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-}
-
-/** on=false면 높이만 재고, on=true면 실제로 그린다. 반환값은 전체 높이(CSS px). */
-function paintReport(ctx, on){
-  const d = renderShare.data, W = IMG_W, X = 16, PW = W - 32, IX = X + 18, IR = X + PW - 18;
-  const all = state.members.length, cars = carItems();
-  const who = e => e.parts.length === all ? '모두' : e.parts.map(nameOf).join(', ');
-  const fit = (t, max) => { if (ctx.measureText(t).width <= max) return t; while (t.length > 1 && ctx.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
-  const text = (t, x, y, o = {}) => {
-    ctx.font = `${o.w || 400} ${o.size || 15}px ${o.f || IF.b}`;
-    if (o.max) t = fit(String(t), o.max);
-    if (on){ ctx.fillStyle = o.color || IC.ink; ctx.textAlign = o.align || 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText(t, x, y); }
-    return ctx.measureText(t).width;
-  };
-  const box = (x, y, w, h, r, fill, stroke, dash) => {
-    if (!on) return; roundRect(ctx, x, y, w, h, r);
-    if (fill){ ctx.fillStyle = fill; ctx.fill(); }
-    if (stroke){ ctx.save(); ctx.strokeStyle = stroke; ctx.lineWidth = 1; if (dash) ctx.setLineDash(dash); ctx.stroke(); ctx.restore(); }
-  };
-  const line = (x1, y1, x2, y2, color = IC.line, width = 1, dash) => {
-    if (!on) return; ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; if (dash) ctx.setLineDash(dash);
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
-  };
-  // 패널: 먼저 내용 높이를 잰 뒤 배경을 깔고 내용을 그린다
-  const panel = (y, title, right, body) => {
-    const was = on; on = false; const end = body(y + 58); on = was;
-    const h = end - y + 18;
-    box(X, y, PW, h, 10, IC.surface, IC.line);
-    text(title, IX, y + 38, {f:IF.d, size:21});
-    if (right) text(right, IR, y + 36, {f:IF.n, size:13, color:IC.muted, align:'right'});
-    body(y + 58);
-    return y + h + 16;
-  };
-
-  if (on){ ctx.fillStyle = IC.bg; ctx.fillRect(0, 0, W, 1e5); }
-  let y = 22;
-  text('여행 이름', X + 2, y + 12, {size:12, w:500, color:IC.muted}); y += 20;
-  text(state.trip || '여행', X + 2, y + 32, {f:IF.d, size:34, max:PW}); y += 52;
-
-  // 지출 내역
-  const rows = state.expenses.map(e => ({e, car:false})).concat(cars.map(e => ({e, car:true})));
-  y = panel(y, '지출 내역', rows.length + '건', y0 => {
-    let yy = y0;
-    if (!rows.length){ text('지출이 없어요.', IX, yy + 18, {size:14, color:IC.muted}); yy += 30; }
-    let carHead = false;
-    rows.forEach(({e, car}, i) => {
-      if (car && !carHead){ carHead = true; if (i) line(IX, yy, IR, yy); text('자차 비용 · 자동 계산', IX, yy + 26, {size:12, w:500, color:IC.muted}); yy += 34; }
-      else if (i) line(IX, yy + .5, IR, yy + .5, IC.line, 1, [3, 3]);
-      const amtW = text(won(e.amount), IR, yy + 33, {f:IF.n, size:15, w:500, align:'right'});
-      let tx = IX;
-      if (car){ box(IX, yy + 10, 34, 18, 9, null, IC.accent); text('자차', IX + 17, yy + 23, {size:11, w:500, color:IC.accent, align:'center'}); tx += 40; }
-      text(e.desc || '지출', tx, yy + 25, {size:15, w:500, max:IR - amtW - 16 - tx});
-      text(`${nameOf(e.payer)} 결제 · ${who(e)} (${e.parts.length}명)`, IX, yy + 45, {size:13, color:IC.muted, max:IR - amtW - 16 - IX});
-      yy += 56;
-    });
-    line(IX, yy + 4, IR, yy + 4, IC.ink, 2);
-    text('합계', IX, yy + 30, {w:700});
-    text(won(d.total), IR, yy + 30, {f:IF.n, size:15, w:600, align:'right'});
-    return yy + 38;
-  });
-
-  // 요약
-  y = panel(y, '요약', '', y0 => {
-    let yy = y0;
-    const cw = (IR - IX) / 3;
-    [['총 비용', won(d.total)], ['인원', d.n + '명'], ['1인 평균', d.n ? won(Math.round(d.total / d.n)) : '–']].forEach(([l, v], i) => {
-      text(l, IX + cw * i, yy + 12, {size:12, w:500, color:IC.muted});
-      text(v, IX + cw * i, yy + 38, {f:IF.n, size:18, w:600, max:cw - 8});
-    });
-    yy += 58;
-    const c1 = IX + (IR - IX) * .52, c2 = IX + (IR - IX) * .76;
-    text('이름', IX, yy + 12, {size:12, w:500, color:IC.muted});
-    [['낸 돈', c1], ['부담액', c2], ['차액', IR]].forEach(([l, x]) => text(l, x, yy + 12, {size:12, w:500, color:IC.muted, align:'right'}));
-    yy += 20;
-    d.bal.forEach(b => {
-      line(IX, yy + .5, IR, yy + .5);
-      text(b.name, IX, yy + 25, {size:14, max:c1 - IX - 90});
-      text(won(b.paid), c1, yy + 25, {f:IF.n, size:13, align:'right'});
-      text(won(b.owed), c2, yy + 25, {f:IF.n, size:13, align:'right'});
-      text((b.net > 0 ? '+' : '') + won(b.net), IR, yy + 25, {f:IF.n, size:13, w:600, align:'right', color:b.net > 0 ? IC.pos : b.net < 0 ? IC.neg : IC.ink});
-      yy += 38;
-    });
-    return yy;
-  });
-
-  // 이렇게 보내세요
-  y = panel(y, '이렇게 보내세요', '', y0 => {
-    let yy = y0;
-    const t = d.transfers;
-    if (!t.length){
-      box(IX, yy, IR - IX, 48, 10, null, IC.pos, [4, 3]);
-      text(rows.length ? '모두 정확히 자기 몫을 냈어요. 보낼 돈이 없습니다.' : '지출이 없어요.', IX + 14, yy + 30, {size:14, w:500, color:IC.pos});
-      return yy + 48;
-    }
-    const bw = text(t.length + '회', IX, yy + 30, {f:IF.d, size:34, color:IC.accent});
-    text('송금으로 끝', IX + bw + 10, yy + 28, {size:15});
-    yy += 46;
-    t.forEach(x => {
-      box(IX, yy, IR - IX, 50, 10, IC.sunk, IC.line);
-      const mw = text(won(x.amount), IR - 14, yy + 32, {f:IF.n, size:18, w:600, align:'right'});
-      line(IR - 14 - mw - 14, yy + 12, IR - 14 - mw - 14, yy + 38, IC.line, 2, [3, 3]);
-      const room = IR - 14 - mw - 28 - (IX + 14);
-      const fw = text(nameOf(x.from), IX + 14, yy + 31, {size:15, w:700, max:room / 2 - 14});
-      text('→', IX + 14 + fw + 8, yy + 31, {f:IF.n, size:15, color:IC.pop});
-      text(nameOf(x.to), IX + 14 + fw + 28, yy + 31, {size:15, w:700, max:room / 2 - 14});
-      yy += 60;
-    });
-    return yy - 10;
-  });
-
-  text('여행 N빵 정산 · ' + location.host + location.pathname.replace(/\/$/, ''), W / 2, y + 6, {size:12, color:IC.muted, align:'center'});
-  return y + 26;
-}
-
-let reportFile = null, imgSeq = 0, imgTimer = 0;
-function updateImage(){
-  clearTimeout(imgTimer);
-  imgTimer = setTimeout(async () => {
-    const seq = ++imgSeq;
-    // 한글 웹폰트는 글자 범위별로 나뉘어 있어서, 사진에 쓸 글자가 든 조각을 미리 받아 둔다
-    const sample = [state.trip, ...state.members.map(m => m.name), ...state.expenses.map(e => e.desc), '여행 이름 지출 내역 자차 비용 자동 계산 합계 요약 총 비용 인원 1인 평균 이름 낸 돈 부담액 차액 이렇게 보내세요 송금으로 끝 결제 모두 명 원 건 회 주유비 차량경비 통행료 님 차 정산 보낼 돈이 없어요'].join(' ');
-    try { await Promise.all([document.fonts.load(`34px ${IF.d}`, sample), document.fonts.load(`400 15px ${IF.b}`, sample), document.fonts.load(`500 15px ${IF.b}`, sample), document.fonts.load(`700 15px ${IF.b}`, sample), document.fonts.load(`600 15px ${IF.n}`, '0123456789,+-원명건회'), document.fonts.load(`600 15px ${IF.b}`, '원명건회')]); } catch(e){}
-    if (seq !== imgSeq) return;
-    const c = document.createElement('canvas'), ctx = c.getContext('2d');
-    const h = paintReport(ctx, false);
-    const scale = Math.min(2, Math.sqrt(16e6 / (IMG_W * h))); // 휴대폰 캔버스 크기 한도 안에서 선명하게
-    c.width = Math.round(IMG_W * scale); c.height = Math.round(h * scale);
-    ctx.scale(scale, scale);
-    paintReport(ctx, true);
-    c.toBlob(b => {
-      if (!b || seq !== imgSeq) return;
-      const name = (state.trip || '여행').replace(/[\\/:*?"<>|]/g, '').trim() || '여행';
-      reportFile = new File([b], `${name} 정산.png`, {type:'image/png'});
-    }, 'image/png');
-  }, 250);
-}
-
-/** 카톡으로 보내기: 정산표 사진을 공유 창으로. 버튼을 누른 순간 바로 열어야 해서 사진은 미리 만들어 둔다. */
-function sendKakao(){
-  const file = reportFile;
-  if (!file){ say('정산표를 만드는 중이에요. 잠시 후 다시 눌러 주세요.', true); return; }
-  if (navigator.canShare && navigator.canShare({files:[file]})){
-    navigator.share({files:[file], title:`${state.trip || '여행'} 정산`}).then(
-      () => say('보냈어요.'),
-      err => { if (err && err.name !== 'AbortError') say('공유 창을 열 수 없어요. 링크 카드로 보내기를 이용해 주세요.', true); });
-    return;
-  }
-  // PC 등 사진 공유가 안 되는 곳: 파일로 저장
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(file); a.download = file.name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  say('정산표 사진을 저장했어요. 카톡 대화방에 끌어다 놓으세요.');
-}
-$('sendLink').addEventListener('click', sendCard);
 $('sendTop').addEventListener('click', sendKakao);
 
 render();
