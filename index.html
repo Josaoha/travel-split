@@ -151,10 +151,6 @@ details.how summary{cursor:pointer;color:var(--ink);font-weight:500}
 details.how p{margin:8px 0 0;max-width:62ch}
 .toast{font-size:13px;color:var(--pos)}
 .toast.bad{color:var(--neg)}
-.share{margin-top:24px}
-/* 카톡 말풍선처럼 보이는 미리보기 */
-.preview{margin:0;background:var(--sunk);border:1px solid var(--line);border-radius:14px 14px 14px 4px;padding:14px 16px;
-  font-family:var(--f-body);font-size:13.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;max-width:560px}
 @media (min-width:861px){.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}}
 html{-webkit-text-size-adjust:100%}
 body{margin:0}
@@ -251,6 +247,8 @@ body{margin:0}
         <div class="panel-head"><h2 id="h-settle">이렇게 보내세요</h2><button class="btn primary" id="sendTop" type="button">카톡으로 보내기</button></div>
         <div class="verdict" id="verdict"></div>
         <ol class="tickets" id="tickets"></ol>
+        <span class="toast" id="toast" role="status"></span>
+        <textarea id="copyFallback" rows="8" style="width:100%;font-size:13px" hidden readonly aria-label="복사할 텍스트"></textarea>
         <details class="how">
           <summary>송금 횟수는 어떻게 줄이나요?</summary>
           <p>먼저 사람마다 <b>낸 돈 − 부담액</b>으로 받을 돈과 보낼 돈을 정리합니다. 그다음 잔액의 합이 0이 되는 무리를 최대한 많이 찾아요. k명짜리 무리는 k−1번의 송금으로 끝나므로, 무리가 많을수록 송금이 줄어듭니다. 잔액이 남은 사람이 18명 이하면 모든 조합을 따져 최소 횟수를 보장하고, 그보다 많으면 큰 금액끼리 맞추는 방식으로 (인원−1)회 이내를 보장합니다.</p>
@@ -261,23 +259,6 @@ body{margin:0}
     </div>
   </div>
 
-  <section class="panel share" id="share" aria-labelledby="h-share">
-    <div class="panel-head"><h2 id="h-share">카톡방에 공유</h2><span class="muted num" id="shareLen"></span></div>
-    <p class="hint"><b>카톡으로 보내기</b>를 누르면 카카오톡이 열려요. 단톡방을 고르면 아래 내용과 함께 <b>내역 보기 링크</b>가 전송되고, 친구들은 링크를 눌러 이 앱에서 지출·자차·송금 내역을 그대로 볼 수 있어요. 메시지에 넣을 항목은 아래에서 고르세요.</p>
-    <div class="chips" role="group" aria-label="공유할 항목">
-      <button type="button" class="toggle" id="sh-exp" data-sec="exp" aria-pressed="true">지출 내역</button>
-      <button type="button" class="toggle" id="sh-car" data-sec="car" aria-pressed="true">자차 계산</button>
-      <button type="button" class="toggle" id="sh-sum" data-sec="sum" aria-pressed="true">1인별 요약</button>
-      <button type="button" class="toggle" id="sh-pay" data-sec="pay" aria-pressed="true">송금</button>
-    </div>
-    <pre class="preview" id="sharePreview" tabindex="0" aria-label="공유할 내용 미리보기"></pre>
-    <div class="row" style="align-items:center">
-      <button class="btn primary" id="sendBtn" type="button">카톡으로 보내기</button>
-      <button class="btn" id="copyBtn" type="button">복사하기</button>
-      <span class="toast" id="toast" role="status"></span>
-    </div>
-    <textarea id="copyFallback" class="num" rows="8" style="width:100%;font-size:13px" hidden readonly aria-label="복사할 텍스트"></textarea>
-  </section>
 </div>
 
 <script>
@@ -631,9 +612,6 @@ function renderShare(data){
   renderShare.text = text;
   renderShare.data = data;
   updateLink();
-  $('sharePreview').textContent = text;
-  $('shareLen').textContent = plain(text.length) + '자';
-  document.querySelectorAll('[data-sec]').forEach(b => b.setAttribute('aria-pressed', shareSecs[b.dataset.sec]));
 }
 
 /* ---------- 입력 처리 ---------- */
@@ -791,10 +769,6 @@ $('resetYes').addEventListener('click', () => { $('resetConfirm').hidden = true;
 
 /* 공유 */
 const say = (msg, bad) => { $('toast').textContent = msg; $('toast').classList.toggle('bad', !!bad); };
-document.querySelector('.share .chips').addEventListener('click', e => {
-  const s = e.target.dataset.sec; if (!s) return;
-  shareSecs[s] = !shareSecs[s]; renderResult(); say('');
-});
 
 /* ---------- 내역 링크: 정산 내용을 주소(#s=...)에 압축해 담는다. 서버 없이 링크만으로 열린다. ---------- */
 const b64u = {
@@ -926,9 +900,7 @@ function sendKakao(){
   }
   copyText(fullText(), '이 기기에서는 카톡을 바로 열 수 없어 복사했어요. 단톡방에 붙여 넣으세요.');
 }
-$('sendBtn').addEventListener('click', sendKakao);
 $('sendTop').addEventListener('click', sendKakao);
-$('copyBtn').addEventListener('click', () => copyText(fullText(), '복사했어요. 카톡 단톡방 입력창에 붙여 넣으세요.'));
 
 render();
 checkLink();
