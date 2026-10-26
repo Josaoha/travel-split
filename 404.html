@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>여행 N빵 정산</title>
+<script>
+// 카톡 등에서 링크의 ?나 #이 %3F, %23으로 바뀌어 들어오면 GitHub가 이 페이지를 보여 준다.
+// 주소에서 정산 코드를 찾아 앱으로 다시 보낸다.
+(function(){
+  var base = '/travel-split/', href = location.href;
+  try { href = decodeURIComponent(href); } catch (e) {}
+  var m = href.match(/[?#&]s=([zj][\w-]+)/);
+  location.replace(base + (m ? '?s=' + m[1] : ''));
+})();
+</script>
+</head>
+<body style="font-family:sans-serif;padding:24px">
+<p>정산 화면으로 이동하고 있어요… <a href="/travel-split/">바로 열기</a></p>
+</body>
+</html>

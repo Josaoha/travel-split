@@ -804,10 +804,12 @@ async function makeLink(st){
   let code = '';
   if (window.CompressionStream){ try { code = 'z' + b64u.enc(await pipe(json, new CompressionStream('deflate-raw'))); } catch(e){} }
   if (!code) code = 'j' + b64u.enc(json);
-  return location.origin + location.pathname + '#s=' + code;
+  return location.origin + location.pathname + '?s=' + code;
 }
+/** 링크의 정산 코드. 지금은 ?s=, 예전에 보낸 링크는 #s= 형식. */
+const linkCode = () => new URLSearchParams(location.search).get('s') || (location.hash.match(/^#s=([\w-]+)$/) || [])[1] || '';
 async function readLink(){
-  const m = location.hash.match(/^#s=([zj])([\w-]+)$/);
+  const m = linkCode().match(/^([zj])([\w-]+)$/);
   if (!m) return null;
   let bytes = b64u.dec(m[2]);
   if (m[1] === 'z') bytes = await pipe(bytes, new DecompressionStream('deflate-raw'));
@@ -831,7 +833,7 @@ function openView(shared){
 }
 function closeView(){
   viewing = false;
-  history.replaceState(null, '', location.pathname + location.search);
+  history.replaceState(null, '', location.pathname);
   $('viewNotice').hidden = true;
 }
 $('viewClose').addEventListener('click', () => { if (viewing) state = ownState; closeView(); resetForm(); render(); });
@@ -841,7 +843,7 @@ $('viewKeep').addEventListener('click', e => {
   closeView(); save(); render(); say('');
 });
 function checkLink(){
-  if (!/^#s=/.test(location.hash)) return;
+  if (!/[?&]s=/.test(location.search) && !/^#s=/.test(location.hash)) return;
   readLink().then(sh => { if (sh) openView(sh); else throw 0; }).catch(() => {
     $('viewMsg').textContent = '공유 링크를 열 수 없어요. 링크가 잘렸거나 브라우저가 너무 오래됐어요. 크롬이나 사파리로 열어 보세요.';
     $('viewKeep').hidden = true; $('viewNotice').hidden = false;
