@@ -1,5 +1,5 @@
 // 앱을 고치면 이 버전을 올리세요. 옛 캐시가 지워지고 새 파일을 받습니다.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `nbbang-${VERSION}`;
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
