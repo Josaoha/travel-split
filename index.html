@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>여행 N빵 정산</title>
+<meta name="description" content="여행 경비를 입력하면 자차 비용까지 계산해 최소 송금 횟수로 정산해 주는 앱">
+<meta name="theme-color" content="#0F6E6A" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1618" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="N빵 정산">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 2단 — 왼쪽은 입력(인원·자차·지출 원장), 오른쪽은 정산 결과(송금 티켓). 좁으면 1단. */
+:root{
+  --bg:#EDF1F0; --surface:#FFFFFF; --sunk:#F5F8F7; --ink:#15232B; --muted:#5A6A6F; --line:#D2DBDA;
+  --accent:#0F6E6A; --accent-ink:#FFFFFF; --pop:#C98A0B; --pos:#1F7A4D; --neg:#B3412E;
+  --f-display:"Do Hyeon","IBM Plex Sans KR",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1618; --surface:#142124; --sunk:#101B1E; --ink:#E3ECEA; --muted:#8EA2A3; --line:#26383B;
+  --accent:#4DBFB5; --accent-ink:#06201E; --pop:#EDB54A; --pos:#5CC48D; --neg:#EE8070; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1618; --surface:#142124; --sunk:#101B1E; --ink:#E3ECEA; --muted:#8EA2A3; --line:#26383B;
+  --accent:#4DBFB5; --accent-ink:#06201E; --pop:#EDB54A; --pos:#5CC48D; --neg:#EE8070; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:28px 56px}
+h1,h2,h3{font-family:var(--f-display);font-weight:400;text-wrap:balance;margin:0}
+h2{font-size:21px}
+h3{font-size:18px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.label{font-size:12px;letter-spacing:.06em;color:var(--muted);font-weight:500}
+.hint{font-size:13px;color:var(--muted);margin:0;max-width:62ch}
+
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:20px}
+.trip{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 320px}
+#trip{font-family:var(--f-display);font-size:clamp(28px,4vw,38px);border:0;background:transparent;color:var(--ink);padding:0;width:100%;outline:none;border-bottom:2px dashed transparent}
+#trip:focus{border-bottom-color:var(--accent)}
+
+.notice{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;background:var(--sunk);border:1px dashed var(--line);border-radius:var(--r);padding:10px 14px;margin-bottom:20px;font-size:14px}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:24px;min-width:0}
+section.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:default;opacity:.55}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:500}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:6px 8px}
+.btn.ghost:hover{color:var(--ink)}
+.btn.danger{color:var(--neg);border-color:var(--neg)}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field input,.field select{border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:9px 11px;width:100%;min-width:0}
+.field input:focus,.field select:focus{border-color:var(--accent);outline:none}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>.field{flex:1 1 140px}
+.err{color:var(--neg);font-size:13px}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+.check input{width:16px;height:16px;accent-color:var(--accent)}
+
+/* 칩 */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 6px 5px 12px;background:var(--sunk)}
+.chip button{border:0;background:transparent;color:var(--muted);width:22px;height:22px;border-radius:50%;line-height:1;padding:0}
+.chip button:hover{background:var(--line);color:var(--ink)}
+.toggle{border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:transparent;color:var(--muted)}
+.toggle[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.toggle:disabled{opacity:1}
+
+/* 자차 카드 */
+.cars{display:flex;flex-direction:column;gap:14px}
+.car{border:1px solid var(--line);border-radius:var(--r);background:var(--sunk);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.car .field input,.car .field select{background:var(--surface)}
+.car-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.car-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px 12px}
+.car-grid .wide{grid-column:span 2}
+@media (max-width:420px){.car-grid .wide{grid-column:auto}}
+.group-label{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:-4px}
+.calc{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 12px;font-size:13.5px;margin:0;padding-top:12px;border-top:1px dashed var(--line);align-items:baseline}
+.calc dt{font-weight:500}
+.calc .how{color:var(--muted);font-family:var(--f-num);font-size:12px;overflow-wrap:anywhere}
+.calc dd{margin:0;text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.calc .sum{font-weight:700;border-top:1px solid var(--line);padding-top:6px}
+details.sub{font-size:13px}
+details.sub summary{cursor:pointer;color:var(--accent);font-weight:500}
+details.sub .row{margin-top:8px}
+
+/* 지출 원장 */
+.ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ledger li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:center;padding:11px 0;border-top:1px dashed var(--line)}
+.ledger li:first-child{border-top:0}
+.ledger li.editing{background:var(--sunk);margin-inline:-8px;padding-inline:8px;border-radius:8px}
+.ledger li.section{display:block;padding:14px 0 2px;border-top:1px solid var(--line)}
+.ledger .what{font-weight:500;overflow-wrap:anywhere}
+.ledger .who{grid-column:1/2;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.ledger .amt{grid-row:1/3;grid-column:2;text-align:right;font-size:15px}
+.ledger .acts{grid-row:1/3;grid-column:3;display:flex}
+.tag{display:inline-block;font-size:11px;font-weight:500;border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:0 7px;margin-right:6px;vertical-align:1px}
+.ledger-foot{display:flex;justify-content:space-between;border-top:2px solid var(--ink);padding-top:10px;font-weight:700}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+
+/* 요약 */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .num{font-size:clamp(17px,2.2vw,21px);font-weight:600;overflow-wrap:anywhere}
+
+.people{width:100%;border-collapse:collapse;font-size:14px}
+.people th{font-weight:500;color:var(--muted);font-size:12px;text-align:right;padding:0 0 6px}
+.people th:first-child{text-align:left}
+.people td{padding:8px 0;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
+.people td:first-child{text-align:left;white-space:normal}
+.people td+td,.people th+th{padding-left:10px}
+.bar{position:relative;height:6px;background:var(--sunk);border-radius:3px;margin-top:5px}
+.bar::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line)}
+.bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.table-scroll{overflow-x:auto}
+
+/* 송금 티켓 */
+.tickets{display:flex;flex-direction:column;gap:10px;list-style:none;margin:0;padding:0}
+.ticket{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--sunk);padding:12px 14px}
+.ticket .route{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700;min-width:0}
+.ticket .arrow{color:var(--pop);font-family:var(--f-num)}
+.ticket .money{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600;padding-left:14px;border-left:2px dashed var(--line)}
+.verdict{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.verdict .big{font-family:var(--f-display);font-size:34px;line-height:1;color:var(--accent)}
+.pill{display:inline-block;font-size:12px;border-radius:999px;padding:2px 9px;border:1px solid var(--line);color:var(--muted)}
+.pill.good{border-color:var(--pos);color:var(--pos)}
+.done{padding:14px;border:1px dashed var(--pos);border-radius:var(--r);color:var(--pos);font-weight:500}
+details.how{font-size:13.5px;color:var(--muted)}
+details.how summary{cursor:pointer;color:var(--ink);font-weight:500}
+details.how p{margin:8px 0 0;max-width:62ch}
+.toast{font-size:13px;color:var(--pos)}
+.toast.bad{color:var(--neg)}
+.share{margin-top:24px}
+/* 카톡 말풍선처럼 보이는 미리보기 */
+.preview{margin:0;background:var(--sunk);border:1px solid var(--line);border-radius:14px 14px 14px 4px;padding:14px 16px;
+  font-family:var(--f-body);font-size:13.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;max-width:560px}
+@media (min-width:861px){.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+[hidden]{display:none!important}
+.wrap{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-top:calc(28px + env(safe-area-inset-top));padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+@media (prefers-reduced-motion:no-preference){.ticket{animation:in .25s ease both}@keyframes in{from{transform:translateY(4px);opacity:.4}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="trip">
+      <span class="label">여행 이름</span>
+      <input id="trip" aria-label="여행 이름" maxlength="40">
+    </div>
+    <button class="btn ghost" id="resetBtn" type="button">새 여행 시작</button>
+  </header>
+
+  <div class="notice" id="sampleNotice" hidden>
+    <span>지금 보이는 인원, 자차, 지출은 <b>예시 데이터</b>예요. 직접 입력하면 이 브라우저에 저장됩니다.</span>
+    <button class="btn" id="clearSample" type="button">예시 지우고 시작</button>
+  </div>
+  <div class="notice" id="resetConfirm" hidden>
+    <span>인원, 자차, 지출을 모두 지울까요? 되돌릴 수 없어요.</span>
+    <span class="row"><button class="btn" id="resetNo" type="button">취소</button><button class="btn primary" id="resetYes" type="button">모두 지우기</button></span>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" aria-labelledby="h-members">
+        <div class="panel-head"><h2 id="h-members">함께 간 사람</h2><span class="muted num" id="memberCount"></span></div>
+        <div class="chips" id="members"></div>
+        <form class="row" id="memberForm" autocomplete="off">
+          <div class="field"><label class="label" for="memberName">이름 추가</label><input id="memberName" maxlength="12" placeholder="예: 지훈"></div>
+          <button class="btn" type="submit">추가</button>
+        </form>
+        <div class="err" id="memberErr"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-cars">
+        <div class="panel-head"><h2 id="h-cars">자차 이용</h2><button class="btn" id="addCar" type="button">차 추가</button></div>
+        <p class="hint">누군가의 차로 이동했다면 주유비, 차량경비, 통행료를 탄 사람끼리 나눠요. 주유비는 실제 영수증 대신 <b>주행거리 ÷ 연비 × 연료 단가</b>로 계산하므로, 같은 주유비를 지출 내역에 또 넣지 마세요.</p>
+        <div class="cars" id="cars"></div>
+        <div class="err" id="carErr"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-add">
+        <div class="panel-head"><h2 id="h-add">지출 입력</h2><button class="btn ghost" id="cancelEdit" type="button" hidden>수정 취소</button></div>
+        <form id="expForm" autocomplete="off" style="display:flex;flex-direction:column;gap:14px">
+          <div class="row">
+            <div class="field" style="flex:2 1 180px"><label class="label" for="expDesc">내용</label><input id="expDesc" maxlength="30" placeholder="예: 숙소 1박"></div>
+            <div class="field"><label class="label" for="expAmt">금액 (원)</label><input id="expAmt" class="num" inputmode="numeric" placeholder="0"></div>
+          </div>
+          <div class="field"><label class="label" for="expPayer">누가 결제했나요</label><select id="expPayer"></select></div>
+          <div class="field">
+            <span class="label" id="partsLabel">누구 몫인가요 <span class="muted" id="partsHint"></span></span>
+            <div class="chips" id="expParts" role="group" aria-labelledby="partsLabel"></div>
+          </div>
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <div class="err" id="expErr"></div>
+            <button class="btn primary" type="submit" id="expSubmit">지출 추가</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="h-ledger">
+        <div class="panel-head"><h2 id="h-ledger">지출 내역</h2><span class="muted num" id="expCount"></span></div>
+        <ul class="ledger" id="ledger"></ul>
+        <div class="ledger-foot"><span>합계</span><span class="num" id="ledgerTotal"></span></div>
+      </section>
+    </div>
+
+    <div class="col sticky">
+      <section class="panel" aria-labelledby="h-sum">
+        <h2 id="h-sum">요약</h2>
+        <div class="stats">
+          <div class="stat"><span class="label">총 비용</span><span class="num" id="sTotal"></span></div>
+          <div class="stat"><span class="label">인원</span><span class="num" id="sPeople"></span></div>
+          <div class="stat"><span class="label">1인 평균</span><span class="num" id="sAvg"></span></div>
+        </div>
+        <div class="table-scroll">
+          <table class="people">
+            <thead><tr><th>이름</th><th>낸 돈</th><th>부담액</th><th>차액</th></tr></thead>
+            <tbody id="peopleBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-settle">
+        <div class="panel-head"><h2 id="h-settle">이렇게 보내세요</h2><button class="btn" id="gotoShare" type="button">카톡방에 공유</button></div>
+        <div class="verdict" id="verdict"></div>
+        <ol class="tickets" id="tickets"></ol>
+        <details class="how">
+          <summary>송금 횟수는 어떻게 줄이나요?</summary>
+          <p>먼저 사람마다 <b>낸 돈 − 부담액</b>으로 받을 돈과 보낼 돈을 정리합니다. 그다음 잔액의 합이 0이 되는 무리를 최대한 많이 찾아요. k명짜리 무리는 k−1번의 송금으로 끝나므로, 무리가 많을수록 송금이 줄어듭니다. 잔액이 남은 사람이 18명 이하면 모든 조합을 따져 최소 횟수를 보장하고, 그보다 많으면 큰 금액끼리 맞추는 방식으로 (인원−1)회 이내를 보장합니다.</p>
+          <p>자차 비용은 차주가 낸 지출로 들어갑니다. 차주는 기름과 차를 내놓은 사람이니까요. 통행료만은 실제로 결제한 사람을 따로 고를 수 있어요. 비용은 그 차에 탄 사람끼리만 나눕니다.</p>
+          <p>나눠떨어지지 않는 금액은 1원 단위 나머지를 참여자 순서대로 1원씩 더 배분해서, 모두의 차액 합이 정확히 0원이 되게 합니다.</p>
+        </details>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel share" id="share" aria-labelledby="h-share">
+    <div class="panel-head"><h2 id="h-share">카톡방에 공유</h2><span class="muted num" id="shareLen"></span></div>
+    <p class="hint">아래 내용을 복사해 단톡방에 붙여 넣으세요. 넣을 항목을 고를 수 있어요.</p>
+    <div class="chips" role="group" aria-label="공유할 항목">
+      <button type="button" class="toggle" id="sh-exp" data-sec="exp" aria-pressed="true">지출 내역</button>
+      <button type="button" class="toggle" id="sh-car" data-sec="car" aria-pressed="true">자차 계산</button>
+      <button type="button" class="toggle" id="sh-sum" data-sec="sum" aria-pressed="true">1인별 요약</button>
+      <button type="button" class="toggle" id="sh-pay" data-sec="pay" aria-pressed="true">송금</button>
+    </div>
+    <pre class="preview" id="sharePreview" tabindex="0" aria-label="공유할 내용 미리보기"></pre>
+    <div class="row" style="align-items:center">
+      <button class="btn primary" id="copyBtn" type="button">복사하기</button>
+      <button class="btn" id="nativeShare" type="button" hidden>다른 앱으로 공유</button>
+      <span class="toast" id="toast" role="status"></span>
+    </div>
+    <textarea id="copyFallback" class="num" rows="8" style="width:100%;font-size:13px" hidden readonly aria-label="복사할 텍스트"></textarea>
+  </section>
+</div>
+
+<script>
+// ALGO START
+/** 각 사람의 낸 돈, 부담액, 차액(+받을 돈 / −보낼 돈). 금액은 모두 원 단위 정수. */
+function computeBalances(members, expenses){
+  const acc = new Map(members.map(m => [m.id, {paid:0, owed:0}]));
+  for (const e of expenses){
+    const parts = e.parts.filter(id => acc.has(id));
+    if (!parts.length || !acc.has(e.payer) || !(e.amount > 0)) continue;
+    const k = parts.length, base = Math.floor(e.amount / k), rem = e.amount - base * k;
+    acc.get(e.payer).paid += e.amount;
+    parts.forEach((id, i) => { acc.get(id).owed += base + (i < rem ? 1 : 0); });
+  }
+  return members.map(m => { const a = acc.get(m.id); return {id:m.id, name:m.name, paid:a.paid, owed:a.owed, net:a.paid - a.owed}; });
+}
+
+/** 합이 0인 집합 안에서 가장 큰 채무자 → 가장 큰 채권자 순으로 맞춤. 최대 (인원−1)회. */
+function greedySettle(people){
+  const cr = people.filter(p => p.net > 0).map(p => ({id:p.id, amt:p.net}));
+  const db = people.filter(p => p.net < 0).map(p => ({id:p.id, amt:-p.net}));
+  const out = [];
+  while (cr.length && db.length){
+    cr.sort((a,b) => b.amt - a.amt); db.sort((a,b) => b.amt - a.amt);
+    const c = cr[0], d = db[0], x = Math.min(c.amt, d.amt);
+    out.push({from:d.id, to:c.id, amount:x});
+    c.amt -= x; d.amt -= x;
+    if (!c.amt) cr.shift();
+    if (!d.amt) db.shift();
+  }
+  return out;
+}
+
+const EXACT_LIMIT = 18;
+/**
+ * 최소 송금: 잔액이 0이 아닌 n명을 "합이 0인 무리"로 최대한 많이 쪼개면 송금 수 = n − 무리 수.
+ * dp[mask] = mask 안에서 만들 수 있는 합 0 무리의 최대 개수 (비트마스크 DP, O(2^n · n)).
+ */
+function minTransfers(balances){
+  const nz = balances.filter(b => b.net !== 0);
+  const n = nz.length;
+  if (n === 0) return {transfers:[], exact:true, n:0};
+  if (n > EXACT_LIMIT) return {transfers:greedySettle(nz), exact:false, n};
+  const N = 1 << n, sum = new Float64Array(N), dp = new Int8Array(N), pick = new Int8Array(N);
+  for (let m = 1; m < N; m++){
+    const low = m & -m, i = 31 - Math.clz32(low);
+    sum[m] = sum[m ^ low] + nz[i].net;
+    let best = -1, bi = 0;
+    for (let j = 0; j < n; j++) if ((m >> j) & 1){ const v = dp[m ^ (1 << j)]; if (v > best){ best = v; bi = j; } }
+    dp[m] = best + (sum[m] === 0 ? 1 : 0);
+    pick[m] = bi;
+  }
+  // 경로를 되짚으며 합이 0이 되는 지점마다 무리를 끊는다.
+  const transfers = [];
+  let m = N - 1, group = [];
+  while (m){
+    const j = pick[m]; group.push(nz[j]); m ^= 1 << j;
+    if (sum[m] === 0){ transfers.push(...greedySettle(group)); group = []; }
+  }
+  return {transfers, exact:true, n};
+}
+
+/** 비교용: 지출마다 참여자가 결제자에게 따로 보내면 생기는 송금 쌍의 수. */
+function naiveCount(expenses){
+  const pairs = new Set();
+  for (const e of expenses) for (const p of e.parts) if (p !== e.payer) pairs.add(p + '>' + e.payer);
+  return pairs.size;
+}
+
+/** 자차 한 대의 항목별 비용(원). 주유비 = km ÷ 연비 × 단가, 차량경비(감가·소모품·세차 통합) = km × 원/km. */
+function carCosts(c){
+  const fuel = c.eff > 0 ? Math.round(c.km / c.eff * c.price) : 0;
+  return {fuel, veh:Math.round(c.km * (c.veh || 0)), toll:Math.round(c.toll || 0)};
+}
+
+/** 자차를 일반 지출 형태로 바꾼다. 차주가 결제자(통행료는 지정 가능), 탄 사람끼리 나눔. order = 멤버 id 순서. */
+function carExpenses(c, order, label){
+  const riders = new Set(c.riders); riders.add(c.owner);
+  if (!c.ownerShares) riders.delete(c.owner);
+  const parts = order.filter(id => riders.has(id));
+  const k = carCosts(c), out = [];
+  const add = (key, desc, payer, amount) => {
+    if (amount > 0 && parts.length) out.push({id:`car-${c.id}-${key}`, car:c.id, desc:`${label} ${desc}`, payer, amount, parts});
+  };
+  add('fuel', '주유비', c.owner, k.fuel);
+  add('veh', '차량경비', c.owner, k.veh);
+  add('toll', '통행료', c.tollPayer || c.owner, k.toll);
+  return out;
+}
+// ALGO END
+
+/* 기본값은 대략적인 값이에요. 실제 차량 연비와 주유한 단가로 바꿔 쓰는 걸 전제로 합니다. */
+const FUELS = {
+  gasoline:{label:'휘발유', unit:'L', price:1700},
+  diesel:{label:'경유', unit:'L', price:1600},
+  lpg:{label:'LPG', unit:'L', price:1050},
+  ev:{label:'전기', unit:'kWh', price:350},
+};
+/* veh = 차량경비(원/km): 소모품(타이어·오일·브레이크 등 약 30~50원/km) + 세차 + 감가 일부를 합친 추정치 */
+const CAR_PRESETS = {
+  mini:{label:'경차', fuel:'gasoline', eff:14, veh:50},
+  compact:{label:'소형·준중형', fuel:'gasoline', eff:13, veh:70},
+  mid:{label:'중형 세단', fuel:'gasoline', eff:11, veh:100},
+  large:{label:'대형 세단', fuel:'gasoline', eff:9, veh:150},
+  suvG:{label:'SUV 휘발유', fuel:'gasoline', eff:10, veh:120},
+  suvD:{label:'SUV 경유', fuel:'diesel', eff:12.5, veh:120},
+  hybrid:{label:'하이브리드', fuel:'gasoline', eff:17, veh:90},
+  van:{label:'승합 LPG', fuel:'lpg', eff:8, veh:120},
+  ev:{label:'전기차', fuel:'ev', eff:5.5, veh:100},
+  custom:{label:'직접 입력'},
+};
+
+const KEY = 'travel-split-v1';
+const won = n => n.toLocaleString('ko-KR') + '원';
+const fmt = n => Number(n || 0).toLocaleString('ko-KR', {maximumFractionDigits:1});
+const uid = () => Math.random().toString(36).slice(2, 9);
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function newCar(owner, riders, preset = 'compact'){
+  const p = CAR_PRESETS[preset];
+  return {id:uid(), owner, preset, fuel:p.fuel, eff:p.eff, price:FUELS[p.fuel].price, km:0, veh:p.veh, toll:0, tollPayer:'', riders:[...riders], ownerShares:true};
+}
+
+function sampleState(){
+  const ids = ['m1','m2','m3','m4'];
+  return {
+    sample:true, trip:'강릉 1박 2일',
+    members:[{id:'m1',name:'민지'},{id:'m2',name:'준호'},{id:'m3',name:'서연'},{id:'m4',name:'태윤'}],
+    cars:[{id:'c1', owner:'m2', preset:'suvD', fuel:'diesel', eff:12.5, price:1600, km:520, veh:120,
+           toll:23600, tollPayer:'', riders:ids, ownerShares:true}],
+    expenses:[
+      {id:'e1',desc:'숙소 1박',payer:'m1',amount:260000,parts:ids},
+      {id:'e2',desc:'주문진 회',payer:'m3',amount:148000,parts:ids},
+      {id:'e3',desc:'안목해변 카페',payer:'m4',amount:34500,parts:['m1','m3','m4']},
+      {id:'e4',desc:'중앙시장 간식',payer:'m1',amount:42000,parts:ids},
+      {id:'e5',desc:'편의점',payer:'m4',amount:17800,parts:ids},
+    ]
+  };
+}
+let state;
+try { state = JSON.parse(localStorage.getItem(KEY)); } catch(e) {}
+if (!state || !Array.isArray(state.members)) state = sampleState();
+if (!Array.isArray(state.cars)) state.cars = [];
+// 이전 버전(감가상각·세차비·기타 따로 입력)에서 저장된 차는 차종 기본 차량경비로 바꾼다.
+state.cars.forEach(c => { if (c.veh == null){ c.veh = (CAR_PRESETS[c.preset] || CAR_PRESETS.mid).veh || CAR_PRESETS.mid.veh; delete c.dep; delete c.wash; delete c.other; } });
+let editingId = null;
+let draftParts = null;
+
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(state, (k, v) => k === '_armed' ? undefined : v)); } catch(e) {} }
+function touch(){ state.sample = false; save(); render(); }
+const nameOf = id => (state.members.find(m => m.id === id) || {name:'?'}).name;
+const carLabel = c => `${nameOf(c.owner)}님 차`;
+const order = () => state.members.map(m => m.id);
+const carItems = () => state.cars.flatMap(c => carExpenses(c, order(), carLabel(c)));
+const allExpenses = () => state.expenses.concat(carItems());
+
+/** innerHTML을 다시 그려도 키보드 포커스가 같은 id로 돌아오게 한다. */
+function keepFocus(fn){ const id = document.activeElement && document.activeElement.id; fn(); if (id && $(id) && document.activeElement !== $(id)) $(id).focus(); }
+
+/* ---------- 렌더링 ---------- */
+function render(){
+  if (document.activeElement !== $('trip')) $('trip').value = state.trip;
+  $('sampleNotice').hidden = !state.sample;
+  keepFocus(() => { renderMembers(); renderCars(); renderForm(); renderLedger(); });
+  renderResult();
+}
+
+function renderMembers(){
+  $('memberCount').textContent = state.members.length + '명';
+  $('members').innerHTML = state.members.length
+    ? state.members.map(m => `<span class="chip">${esc(m.name)}<button type="button" id="del-${m.id}" data-del-member="${m.id}" aria-label="${esc(m.name)} 빼기">×</button></span>`).join('')
+    : '<span class="empty">아직 아무도 없어요. 아래에서 이름을 추가하세요.</span>';
+}
+
+function opts(list, sel){ return list.map(([v, l]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join(''); }
+function numField(c, key, label, step){
+  return `<div class="field"><label class="label" for="car-${c.id}-${key}">${label}</label>
+    <input class="num" type="number" min="0" step="${step}" inputmode="decimal" id="car-${c.id}-${key}" data-car="${c.id}" data-k="${key}" value="${c[key] || ''}" placeholder="0"></div>`;
+}
+
+function renderCars(){
+  const people = state.members.map(m => [m.id, m.name]);
+  $('cars').innerHTML = state.cars.length ? state.cars.map(c => {
+    const f = FUELS[c.fuel], id = c.id;
+    const riders = new Set(c.riders);
+    return `<article class="car" aria-label="${esc(carLabel(c))}">
+      <div class="car-head"><h3>${esc(carLabel(c))}</h3>
+        <button class="btn ghost" type="button" id="car-${id}-rm" data-car-rm="${id}">${c._armed ? '정말 삭제' : '차 삭제'}</button></div>
+      <div class="car-grid">
+        <div class="field"><label class="label" for="car-${id}-owner">차주</label><select id="car-${id}-owner" data-car="${id}" data-k="owner">${opts(people, c.owner)}</select></div>
+        <div class="field"><label class="label" for="car-${id}-preset">차종</label><select id="car-${id}-preset" data-car="${id}" data-k="preset">${opts(Object.entries(CAR_PRESETS).map(([k, p]) => [k, p.label]), c.preset)}</select></div>
+        <div class="field"><label class="label" for="car-${id}-fuel">연료</label><select id="car-${id}-fuel" data-car="${id}" data-k="fuel">${opts(Object.entries(FUELS).map(([k, x]) => [k, x.label]), c.fuel)}</select></div>
+        ${numField(c, 'km', '주행거리 (km)', 1)}
+        ${numField(c, 'eff', `연비 (km/${f.unit})`, 0.1)}
+        ${numField(c, 'price', `${f.label} 단가 (원/${f.unit})`, 1)}
+      </div>
+      <div class="group-label">차량경비 · 통행료</div>
+      <div class="car-grid">
+        ${numField(c, 'veh', '차량경비 (원/km)', 10)}
+        ${numField(c, 'toll', '통행료 합계 (원)', 100)}
+        <div class="field"><label class="label" for="car-${id}-tollPayer">통행료 낸 사람</label><select id="car-${id}-tollPayer" data-car="${id}" data-k="tollPayer">${opts([['', `차주 (${nameOf(c.owner)})`], ...people.filter(([m]) => m !== c.owner)], c.tollPayer)}</select></div>
+      </div>
+      <details class="sub"><summary>차량경비 1km당 얼마가 적당할까요?</summary>
+        <p class="hint" style="margin-top:8px">세차, 엔진오일, 타이어, 감가를 따로 따지지 않고 1km당 금액 하나로 합쳤어요. 중형차 기준 약 100원/km를 권해요. 타이어·오일·브레이크 같은 소모품이 30~50원, 나머지가 세차와 감가 일부예요. 차종을 고르면 아래 값이 채워집니다.</p>
+        <p class="hint num" style="margin-top:6px">경차 50 · 준중형 70 · 하이브리드 90 · 중형 100 · 전기차 100 · SUV·승합 120 · 대형 150 (원/km)</p>
+        <p class="hint" style="margin-top:6px">소모품만 보전하려면 40~50원, 감가까지 넉넉히 쳐 주려면 150~200원으로 잡으세요. 보험료와 자동차세는 여행을 안 가도 나가는 돈이라 넣지 않았어요.</p>
+      </details>
+      <div class="field">
+        <span class="label">탄 사람</span>
+        <div class="chips">${state.members.map(m => m.id === c.owner
+          ? `<button type="button" class="toggle" aria-pressed="${c.ownerShares}" id="car-${id}-r-${m.id}" data-share="${id}" title="차주도 n분의 1을 낼지 정해요">${esc(m.name)} · 차주</button>`
+          : `<button type="button" class="toggle" aria-pressed="${riders.has(m.id)}" id="car-${id}-r-${m.id}" data-rider="${m.id}" data-car-id="${id}">${esc(m.name)}</button>`).join('')}</div>
+        <span class="hint">차주 칩을 끄면 차주는 빼고 나머지가 비용을 전부 부담해요.</span>
+      </div>
+      <dl class="calc" id="car-${id}-calc"></dl>
+    </article>`;
+  }).join('') : '<div class="empty">자차로 이동하지 않았다면 비워 두세요.</div>';
+  state.cars.forEach(renderCarCalc);
+}
+
+function renderCarCalc(c){
+  const el = $(`car-${c.id}-calc`); if (!el) return;
+  const k = carCosts(c), f = FUELS[c.fuel];
+  const items = carExpenses(c, order(), '');
+  const n = items.length ? items[0].parts.length : 0;
+  const total = k.fuel + k.veh + k.toll;
+  const row = (t, how, v) => `<dt>${t}</dt><span class="how">${how}</span><dd>${won(v)}</dd>`;
+  el.innerHTML =
+    row('주유비', `${fmt(c.km)}km ÷ ${fmt(c.eff)}km/${f.unit} × ${fmt(c.price)}원`, k.fuel) +
+    row('차량경비', `${fmt(c.km)}km × ${fmt(c.veh)}원`, k.veh) +
+    row('통행료', c.tollPayer ? `${esc(nameOf(c.tollPayer))} 결제` : '', k.toll) +
+    `<dt class="sum">합계</dt><span class="how sum">${n ? `${n}명이 나눠 1인 약 ${won(Math.round(total / n))}` : '나눌 사람이 없어요'}</span><dd class="sum">${won(total)}</dd>`;
+}
+
+function renderForm(){
+  const sel = $('expPayer'), prev = sel.value;
+  sel.innerHTML = state.members.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+  if (state.members.some(m => m.id === prev)) sel.value = prev;
+  const valid = new Set(order());
+  if (!draftParts) draftParts = new Set(valid);
+  draftParts = new Set([...draftParts].filter(id => valid.has(id)));
+  $('expParts').innerHTML = state.members.map(m =>
+    `<button type="button" class="toggle" id="part-${m.id}" data-part="${m.id}" aria-pressed="${draftParts.has(m.id)}">${esc(m.name)}</button>`).join('')
+    + (state.members.length > 1 ? `<button type="button" class="btn ghost" id="part-all" data-part-all>${draftParts.size === state.members.length ? '모두 해제' : '모두 선택'}</button>` : '');
+  const amt = parseAmt($('expAmt').value);
+  $('partsHint').textContent = draftParts.size
+    ? `· ${draftParts.size}명${amt ? ', 1인 ' + won(Math.floor(amt / draftParts.size)) : ''}` : '';
+  $('expSubmit').textContent = editingId ? '수정 저장' : '지출 추가';
+  $('cancelEdit').hidden = !editingId;
+}
+
+function renderLedger(){
+  const ex = state.expenses, cars = carItems(), all = state.members.length;
+  const who = e => e.parts.length === all ? '모두' : e.parts.map(nameOf).join(', ');
+  $('expCount').textContent = (ex.length + cars.length) + '건';
+  const manual = ex.map(e => `<li class="${e.id === editingId ? 'editing' : ''}">
+      <span class="what">${esc(e.desc || '지출')}</span>
+      <span class="who">${esc(nameOf(e.payer))} 결제 · ${esc(who(e))} (${e.parts.length}명)</span>
+      <span class="amt num">${won(e.amount)}</span>
+      <span class="acts"><button class="btn ghost" id="edit-${e.id}" data-edit="${e.id}" type="button">수정</button><button class="btn ghost" id="delx-${e.id}" data-del-exp="${e.id}" type="button" aria-label="${esc(e.desc)} 삭제">삭제</button></span>
+    </li>`).join('');
+  const auto = cars.map(e => `<li>
+      <span class="what"><span class="tag">자차</span>${esc(e.desc)}</span>
+      <span class="who">${esc(nameOf(e.payer))} 결제 · ${esc(who(e))} (${e.parts.length}명)</span>
+      <span class="amt num">${won(e.amount)}</span>
+      <span class="acts"><button class="btn ghost" type="button" data-goto-car="${e.car}">고치기</button></span>
+    </li>`).join('');
+  $('ledger').innerHTML = (manual || (cars.length ? '' : '<li class="empty">지출을 입력하면 여기에 쌓여요.</li>'))
+    + (auto ? `<li class="section label">자차 비용 · 자동 계산</li>${auto}` : '');
+  $('ledgerTotal').textContent = won(ex.concat(cars).reduce((s, e) => s + e.amount, 0));
+}
+
+function renderResult(){
+  const expenses = allExpenses();
+  const bal = computeBalances(state.members, expenses);
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+  const n = state.members.length;
+  $('sTotal').textContent = won(total);
+  $('sPeople').textContent = n + '명';
+  $('sAvg').textContent = n ? won(Math.round(total / n)) : '–';
+
+  const maxAbs = Math.max(1, ...bal.map(b => Math.abs(b.net)));
+  $('peopleBody').innerHTML = bal.map(b => {
+    const w = Math.abs(b.net) / maxAbs * 50;
+    const bar = b.net === 0 ? '' : `<i style="${b.net > 0 ? 'left:50%' : 'right:50%'};width:${w}%;background:var(${b.net > 0 ? '--pos' : '--neg'})"></i>`;
+    return `<tr><td>${esc(b.name)}<div class="bar">${bar}</div></td>
+      <td class="num">${won(b.paid)}</td><td class="num">${won(b.owed)}</td>
+      <td class="num ${b.net > 0 ? 'pos' : b.net < 0 ? 'neg' : ''}">${b.net > 0 ? '+' : ''}${won(b.net)}</td></tr>`;
+  }).join('');
+
+  const res = minTransfers(bal);
+  const naive = naiveCount(expenses);
+  const t = res.transfers;
+  if (!t.length){
+    $('verdict').innerHTML = '';
+    $('tickets').innerHTML = `<li class="done">${expenses.length ? '모두 정확히 자기 몫을 냈어요. 보낼 돈이 없습니다.' : '지출을 입력하면 송금 목록이 나타나요.'}</li>`;
+  } else {
+    const saved = naive - t.length;
+    $('verdict').innerHTML = `<span class="big num">${t.length}회</span><span>송금으로 끝</span>
+      ${saved > 0 ? `<span class="pill good">항목별로 보내면 ${naive}회 → ${saved}회 줄임</span>` : ''}
+      <span class="pill">${res.exact ? '최소 횟수 보장' : '근사 계산 (' + res.n + '명)'}</span>`;
+    $('tickets').innerHTML = t.map(x => `<li class="ticket">
+      <span class="route">${esc(nameOf(x.from))}<span class="arrow" aria-label="에게">→</span>${esc(nameOf(x.to))}</span>
+      <span class="money">${won(x.amount)}</span></li>`).join('');
+  }
+  renderShare({total, n, bal, transfers:t, exact:res.exact});
+}
+
+/* ---------- 카톡 공유 텍스트 ---------- */
+const shareSecs = {exp:true, car:true, sum:true, pay:true};
+const plain = n => n.toLocaleString('ko-KR');
+
+function buildReport({total, n, bal, transfers, exact}){
+  const all = state.members.length;
+  const who = e => e.parts.length === all ? `모두 ${all}명` : `${e.parts.map(nameOf).join('·')} ${e.parts.length}명`;
+  const out = [`[${state.trip || '여행'} 정산]`, `총 ${won(total)} · ${n}명 · 1인 평균 ${n ? won(Math.round(total / n)) : '-'}`];
+
+  if (shareSecs.exp && state.expenses.length){
+    out.push('', '■ 지출 내역');
+    state.expenses.forEach(e => out.push(`· ${e.desc || '지출'} ${won(e.amount)}`, `   ${nameOf(e.payer)} 결제 / ${who(e)}`));
+  }
+  if (shareSecs.car && state.cars.length){
+    out.push('', '■ 자차 계산');
+    state.cars.forEach(c => {
+      const k = carCosts(c), f = FUELS[c.fuel], items = carExpenses(c, order(), '');
+      const sum = k.fuel + k.veh + k.toll, cnt = items.length ? items[0].parts.length : 0;
+      const kind = c.preset && c.preset !== 'custom' && CAR_PRESETS[c.preset] ? CAR_PRESETS[c.preset].label : f.label;
+      out.push(`${carLabel(c)} (${kind}, ${fmt(c.km)}km)`,
+        `· 주유비 ${fmt(c.km)}km ÷ ${fmt(c.eff)}km/${f.unit} × ${plain(c.price)}원 = ${won(k.fuel)}`,
+        `· 차량경비 ${fmt(c.km)}km × ${plain(c.veh)}원 = ${won(k.veh)}`);
+      if (k.toll) out.push(`· 통행료 ${won(k.toll)}${c.tollPayer ? ` (${nameOf(c.tollPayer)} 결제)` : ''}`);
+      out.push(`→ 합계 ${won(sum)}${cnt ? `, ${items[0].parts.map(nameOf).join('·')} ${cnt}명이 나눔 (1인 약 ${won(Math.round(sum / cnt))})` : ''}`);
+    });
+  }
+  if (shareSecs.sum && bal.length){
+    out.push('', '■ 1인별 요약 (낸 돈 / 부담액 / 차액)');
+    bal.forEach(b => out.push(`· ${b.name} ${plain(b.paid)} / ${plain(b.owed)} / ${b.net > 0 ? '+' : ''}${plain(b.net)}`));
+  }
+  if (shareSecs.pay){
+    out.push('', `■ 송금 ${transfers.length}회${transfers.length && exact ? ' (최소 횟수)' : ''}`);
+    if (transfers.length) transfers.forEach((x, i) => out.push(`${i + 1}. ${nameOf(x.from)} → ${nameOf(x.to)} ${won(x.amount)}`));
+    else out.push('보낼 돈이 없어요.');
+  }
+  return out.join('\n');
+}
+
+function renderShare(data){
+  const text = buildReport(data);
+  renderShare.text = text;
+  $('sharePreview').textContent = text;
+  $('shareLen').textContent = plain(text.length) + '자';
+  document.querySelectorAll('[data-sec]').forEach(b => b.setAttribute('aria-pressed', shareSecs[b.dataset.sec]));
+}
+
+/* ---------- 입력 처리 ---------- */
+const parseAmt = s => parseInt(String(s).replace(/[^\d]/g, ''), 10) || 0;
+
+$('trip').addEventListener('input', e => { state.trip = e.target.value; state.sample = false; save(); $('sampleNotice').hidden = true; renderResult(); });
+
+$('memberForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('memberName').value.trim();
+  $('memberErr').textContent = '';
+  if (!name) return;
+  if (state.members.some(m => m.name === name)){ $('memberErr').textContent = `'${name}'은(는) 이미 있어요. 동명이인이면 '${name}2'처럼 구분해 주세요.`; return; }
+  const id = uid();
+  state.members.push({id, name});
+  draftParts && draftParts.add(id);
+  $('memberName').value = '';
+  touch();
+});
+
+$('members').addEventListener('click', e => {
+  const id = e.target.dataset.delMember; if (!id) return;
+  const paid = state.expenses.filter(x => x.payer === id);
+  const solo = state.expenses.filter(x => x.parts.length === 1 && x.parts[0] === id);
+  const owns = state.cars.filter(c => c.owner === id);
+  $('memberErr').textContent = '';
+  if (owns.length){ $('memberErr').textContent = `${nameOf(id)}님 차가 자차 목록에 있어요. 차주를 바꾸거나 차를 삭제한 뒤 빼 주세요.`; return; }
+  if (paid.length){ $('memberErr').textContent = `${nameOf(id)}님이 결제한 지출 ${paid.length}건이 있어요. 그 지출의 결제자를 바꾸거나 삭제한 뒤 빼 주세요.`; return; }
+  if (solo.length){ $('memberErr').textContent = `${nameOf(id)}님 혼자 부담하는 지출 ${solo.length}건이 있어요. 먼저 참여자를 바꿔 주세요.`; return; }
+  state.members = state.members.filter(m => m.id !== id);
+  state.expenses.forEach(x => x.parts = x.parts.filter(p => p !== id));
+  state.cars.forEach(c => { c.riders = c.riders.filter(p => p !== id); if (c.tollPayer === id) c.tollPayer = ''; });
+  touch();
+});
+
+/* 자차 */
+const carById = id => state.cars.find(c => c.id === id);
+$('addCar').addEventListener('click', () => {
+  $('carErr').textContent = '';
+  if (!state.members.length){ $('carErr').textContent = '먼저 함께 간 사람을 추가하세요.'; return; }
+  const owner = (state.members.find(m => !state.cars.some(c => c.owner === m.id)) || state.members[0]).id;
+  const c = newCar(owner, order());
+  state.cars.push(c);
+  touch();
+  $(`car-${c.id}-km`).focus();
+});
+
+function carChanged(c, structural){
+  state.sample = false; save();
+  if (structural) keepFocus(() => { renderCars(); renderLedger(); });
+  else { renderCarCalc(c); renderLedger(); }
+  $('sampleNotice').hidden = true;
+  renderResult();
+}
+
+$('cars').addEventListener('input', e => {
+  const c = carById(e.target.dataset.car), k = e.target.dataset.k;
+  if (c && e.target.type === 'number'){ c[k] = Math.max(0, parseFloat(e.target.value) || 0); carChanged(c, false); }
+});
+
+$('cars').addEventListener('change', e => {
+  const c = carById(e.target.dataset.car), k = e.target.dataset.k;
+  if (!c || e.target.tagName !== 'SELECT') return;
+  const v = e.target.value;
+  if (k === 'preset'){
+    c.preset = v;
+    const p = CAR_PRESETS[v];
+    if (p.fuel){ if (p.fuel !== c.fuel) c.price = FUELS[p.fuel].price; c.fuel = p.fuel; c.eff = p.eff; c.veh = p.veh; }
+  } else if (k === 'fuel'){
+    c.fuel = v; c.price = FUELS[v].price; c.preset = 'custom';
+  } else if (k === 'owner'){
+    if (c.tollPayer === v) c.tollPayer = '';
+    if (!c.riders.includes(c.owner)) c.riders.push(c.owner);
+    c.owner = v;
+  } else c[k] = v;
+  carChanged(c, true);
+});
+
+$('cars').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.carRm){
+    const c = carById(t.dataset.carRm);
+    if (!c._armed){ c._armed = true; keepFocus(renderCars); setTimeout(() => { if (c._armed){ c._armed = false; keepFocus(renderCars); } }, 4000); return; }
+    state.cars = state.cars.filter(x => x !== c); touch(); return;
+  }
+  if (t.dataset.share){ const c = carById(t.dataset.share); c.ownerShares = !c.ownerShares; carChanged(c, true); return; }
+  if (t.dataset.rider){
+    const c = carById(t.dataset.carId), id = t.dataset.rider;
+    c.riders = c.riders.includes(id) ? c.riders.filter(x => x !== id) : [...c.riders, id];
+    carChanged(c, true); return;
+  }
+});
+
+/* 일반 지출 */
+$('expParts').addEventListener('click', e => {
+  if (e.target.hasAttribute('data-part-all')){
+    draftParts = draftParts.size === state.members.length ? new Set() : new Set(order());
+  } else {
+    const id = e.target.dataset.part; if (!id) return;
+    draftParts.has(id) ? draftParts.delete(id) : draftParts.add(id);
+  }
+  keepFocus(renderForm);
+});
+
+$('expAmt').addEventListener('input', e => {
+  const v = parseAmt(e.target.value);
+  e.target.value = v ? v.toLocaleString('ko-KR') : '';
+  renderForm();
+});
+
+function resetForm(){
+  editingId = null; draftParts = null;
+  $('expDesc').value = ''; $('expAmt').value = ''; $('expErr').textContent = '';
+}
+
+$('expForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const amount = parseAmt($('expAmt').value), payer = $('expPayer').value;
+  const parts = order().filter(id => draftParts.has(id));
+  const err = !state.members.length ? '먼저 함께 간 사람을 추가하세요.'
+    : !amount ? '금액을 입력하세요.'
+    : amount > 1e11 ? '금액이 너무 커요.'
+    : !parts.length ? '이 지출을 나눌 사람을 한 명 이상 고르세요.' : '';
+  $('expErr').textContent = err;
+  if (err) return;
+  const rec = {desc:$('expDesc').value.trim(), payer, amount, parts};
+  if (editingId) Object.assign(state.expenses.find(x => x.id === editingId), rec);
+  else state.expenses.push({id:uid(), ...rec});
+  resetForm();
+  touch();
+  $('expDesc').focus();
+});
+
+$('cancelEdit').addEventListener('click', () => { resetForm(); render(); });
+
+$('ledger').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  const del = t.dataset.delExp, ed = t.dataset.edit, car = t.dataset.gotoCar;
+  if (car){ const el = $(`car-${car}-km`); el.scrollIntoView({block:'center', behavior:'smooth'}); el.focus({preventScroll:true}); return; }
+  if (del){ state.expenses = state.expenses.filter(x => x.id !== del); if (editingId === del) resetForm(); touch(); }
+  if (ed){
+    const x = state.expenses.find(y => y.id === ed);
+    editingId = ed; draftParts = new Set(x.parts);
+    $('expDesc').value = x.desc; $('expAmt').value = x.amount.toLocaleString('ko-KR');
+    render(); $('expPayer').value = x.payer;
+    $('expDesc').focus();
+  }
+});
+
+function wipe(){ state = {sample:false, trip:'', members:[], cars:[], expenses:[]}; resetForm(); save(); render(); $('trip').focus(); }
+$('clearSample').addEventListener('click', wipe);
+$('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; });
+$('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; });
+$('resetYes').addEventListener('click', () => { $('resetConfirm').hidden = true; wipe(); });
+
+/* 공유 */
+const say = (msg, bad) => { $('toast').textContent = msg; $('toast').classList.toggle('bad', !!bad); };
+$('gotoShare').addEventListener('click', () => { $('share').scrollIntoView({behavior:'smooth', block:'start'}); $('copyBtn').focus({preventScroll:true}); });
+document.querySelector('.share .chips').addEventListener('click', e => {
+  const s = e.target.dataset.sec; if (!s) return;
+  shareSecs[s] = !shareSecs[s]; renderResult(); say('');
+});
+$('copyBtn').addEventListener('click', () => {
+  const text = renderShare.text, ta = $('copyFallback');
+  const ok = () => { say('복사했어요. 카톡 단톡방 입력창에 붙여 넣으세요.'); ta.hidden = true; };
+  const fail = () => { ta.value = text; ta.hidden = false; ta.focus(); ta.select(); say('자동 복사가 막혀 있어요. 아래 칸에서 전체 선택 후 복사하세요.', true); };
+  try { navigator.clipboard.writeText(text).then(ok, fail); } catch(e){ fail(); }
+});
+// 휴대폰에서는 공유 시트(카카오톡 포함)를 띄운다. 지원하지 않는 브라우저에서는 복사로 안내.
+if (navigator.share) $('nativeShare').hidden = false;
+$('nativeShare').addEventListener('click', () => {
+  navigator.share({title:`${state.trip || '여행'} 정산`, text:renderShare.text}).then(
+    () => say('공유했어요.'),
+    err => { if (err && err.name !== 'AbortError') say('이 화면에서는 공유 시트를 열 수 없어요. 복사하기를 눌러 주세요.', true); });
+});
+
+render();
+
+/* ---------- 웹앱(PWA) ---------- */
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+// 브라우저가 공간 부족 시 저장된 정산 데이터를 지우지 않도록 요청 (지원하는 브라우저만)
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+</script>
+</body>
+</html>
