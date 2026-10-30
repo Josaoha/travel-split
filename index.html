@@ -3,8 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>여행 N빵 정산</title>
-<meta name="description" content="여행 경비를 입력하면 자차 비용까지 계산해 최소 송금 횟수로 정산해 주는 앱">
+<title>여행 N빵 정산 | 여행 경비 N빵 계산기 · 자차 기름값 정산</title>
+<meta name="description" content="여행 경비를 입력하면 누가 누구에게 얼마를 보낼지 최소 송금 횟수로 알려 주는 무료 N빵 정산 웹앱. 자차 주유비·통행료 계산과 카톡 공유까지 한 번에.">
+<link rel="canonical" href="https://josaoha.github.io/travel-split/">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="여행 N빵 정산">
+<meta property="og:title" content="여행 N빵 정산 - 여행 경비 N빵 계산기">
+<meta property="og:description" content="여행 경비를 입력하면 누가 누구에게 얼마를 보낼지 최소 송금 횟수로 알려 주는 무료 N빵 정산 웹앱. 자차 주유비·통행료 계산과 카톡 공유까지 한 번에.">
+<meta property="og:url" content="https://josaoha.github.io/travel-split/">
+<meta property="og:image" content="https://josaoha.github.io/travel-split/icons/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"여행 N빵 정산","url":"https://josaoha.github.io/travel-split/","description":"여행 경비를 입력하면 누가 누구에게 얼마를 보낼지 최소 송금 횟수로 알려 주는 무료 N빵 정산 웹앱. 자차 주유비·통행료 계산과 카톡 공유까지 한 번에.","applicationCategory":"FinanceApplication","operatingSystem":"Any","inLanguage":"ko","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},"author":{"@type":"Person","name":"josaoha"}}
+</script>
 <meta name="theme-color" content="#0F6E6A" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0D1618" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -151,6 +166,8 @@ details.how summary{cursor:pointer;color:var(--ink);font-weight:500}
 details.how p{margin:8px 0 0;max-width:62ch}
 .toast{font-size:13px;color:var(--pos)}
 .toast.bad{color:var(--neg)}
+.brand{font-family:var(--f-display);font-size:16px;color:var(--accent);margin:0 0 14px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.brand span{font-family:var(--f-body);font-size:12.5px;color:var(--muted);font-weight:400}
 .credit{margin-top:32px;padding-top:16px;border-top:1px solid var(--line);text-align:center;font-size:13px;color:var(--muted)}
 .credit a{color:inherit}
 @media (min-width:861px){.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}}
@@ -163,6 +180,7 @@ body{margin:0}
 </head>
 <body>
 <div class="wrap">
+  <h1 class="brand">여행 N빵 정산 <span>여행 경비 N빵 · 자차 기름값 정산기</span></h1>
   <header class="top">
     <div class="trip">
       <span class="label">여행 이름</span>
